@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UberEats POS — Control Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --black: #0a0a0a;
+      --surface: #111111;
+      --surface2: #1a1a1a;
+      --border: #2a2a2a;
+      --uber-green: #06C167;
+      --uber-green-dim: rgba(6,193,103,0.12);
+      --amber: #F5A623;
+      --amber-dim: rgba(245,166,35,0.12);
+      --red: #FF3B30;
+      --red-dim: rgba(255,59,48,0.12);
+      --blue: #4A9EFF;
+      --blue-dim: rgba(74,158,255,0.12);
+      --text: #f0f0f0;
+      --muted: #666;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--black);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Ticker bar ── */
+    .ticker {
+      background: var(--uber-green);
+      color: #000;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .ticker-inner {
+      display: inline-block;
+      animation: scroll 30s linear infinite;
+    }
+    .ticker-inner span { margin: 0 40px; }
+    @keyframes scroll { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(10,10,10,0.95);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    .logo {
+      font-family: var(--font-head);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--uber-green); }
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .pulse {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--uber-green);
+      animation: pulse 2s ease-in-out infinite;
+      display: inline-block;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+
+    /* ── Stats ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+    }
+    .stat-card.green::before { background: var(--uber-green); }
+    .stat-card.amber::before { background: var(--amber); }
+    .stat-card.red::before   { background: var(--red); }
+    .stat-card.blue::before  { background: var(--blue); }
+    .stat-card:hover { border-color: #444; }
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-bottom: 10px;
+    }
+    .stat-value {
+      font-family: var(--font-head);
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .stat-card.green .stat-value { color: var(--uber-green); }
+    .stat-card.amber .stat-value { color: var(--amber); }
+    .stat-card.red   .stat-value { color: var(--red); }
+    .stat-card.blue  .stat-value { color: var(--blue); }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* ── Main grid ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 16px;
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      color: var(--muted);
+    }
+    .panel-header strong { color: var(--text); font-family: var(--font-head); font-size: 13px; text-transform: none; letter-spacing: 0; }
+
+    /* ── Filters ── */
+    .filters {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .filter-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-btn:hover, .filter-btn.active {
+      border-color: var(--uber-green);
+      color: var(--uber-green);
+      background: var(--uber-green-dim);
+    }
+
+    /* ── Event list ── */
+    .event-list { max-height: 580px; overflow-y: auto; }
+    .event-list::-webkit-scrollbar { width: 4px; }
+    .event-list::-webkit-scrollbar-track { background: transparent; }
+    .event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .event-row {
+      display: grid;
+      grid-template-columns: 90px 130px 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      animation: fadeIn 0.3s ease;
+      transition: background 0.15s;
+    }
+    .event-row:hover { background: var(--surface2); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+
+    .event-time { color: var(--muted); font-size: 11px; }
+    .event-type {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .type-ORDER_RECEIVED  { background: var(--blue-dim);  color: var(--blue); }
+    .type-ORDER_ACCEPTED  { background: var(--uber-green-dim); color: var(--uber-green); }
+    .type-ORDER_DENIED    { background: var(--red-dim);   color: var(--red); }
+    .type-STATUS_UPDATE   { background: var(--amber-dim); color: var(--amber); }
+    .type-MENU_SYNC       { background: rgba(255,255,255,0.06); color: #aaa; }
+    .type-ERROR           { background: var(--red-dim);   color: var(--red); }
+
+    .event-detail { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .event-detail strong { color: var(--text); }
+
+    .event-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s; }
+    .event-row:hover .event-actions { opacity: 1; }
+    .btn-sm {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      border: 1px solid;
+      transition: all 0.15s;
+    }
+    .btn-accept { border-color: var(--uber-green); color: var(--uber-green); background: none; }
+    .btn-accept:hover { background: var(--uber-green); color: #000; }
+    .btn-deny   { border-color: var(--red); color: var(--red); background: none; }
+    .btn-deny:hover { background: var(--red); color: #fff; }
+
+    /* ── Clients sidebar ── */
+    .client-item {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .client-item:hover, .client-item.active { background: var(--surface2); }
+    .client-name { font-family: var(--font-head); font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .client-meta { font-size: 11px; color: var(--muted); }
+    .client-store-id { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Order detail modal ── */
+    .modal-bg {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      width: 500px;
+      max-width: 90vw;
+      max-height: 80vh;
+      overflow-y: auto;
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+    .modal-close {
+      float: right; background: none; border: none; color: var(--muted);
+      font-size: 20px; cursor: pointer; line-height: 1;
+    }
+    .modal pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      font-size: 11px;
+      overflow: auto;
+      color: var(--uber-green);
+      max-height: 400px;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+
+    /* ── Toast ── */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--uber-green);
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      animation: toastIn 0.2s ease;
+      max-width: 320px;
+    }
+    .toast.error { border-left-color: var(--red); }
+    @keyframes toastIn { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+  </style>
+</head>
+<body>
+
+<div class="ticker">
+  <div class="ticker-inner">
+    <span>🍔 UBER EATS POS INTEGRATION</span>
+    <span>📡 WEBHOOK LISTENER ACTIVE</span>
+    <span>🔄 MULTI-TENANT ORDER ROUTING</span>
+    <span>📋 MENU SYNC READY</span>
+    <span>✅ REAL-TIME ORDER MANAGEMENT</span>
+    <span>🍔 UBER EATS POS INTEGRATION</span>
+    <span>📡 WEBHOOK LISTENER ACTIVE</span>
+    <span>🔄 MULTI-TENANT ORDER ROUTING</span>
+  </div>
+</div>
+
+<header>
+  <div class="logo">POS<span>×</span>UberEats</div>
+  <div class="header-meta">
+    <span><span class="pulse"></span> &nbsp;Live</span>
+    <span id="clock">—</span>
+    <span id="uptime-label" style="color:var(--uber-green)">●&nbsp;Connected</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card blue">
+      <div class="stat-label">Orders / hr</div>
+      <div class="stat-value" id="stat-orders">0</div>
+      <div class="stat-sub">Last 60 minutes</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Accepted</div>
+      <div class="stat-value" id="stat-accepted">0</div>
+      <div class="stat-sub">Last 60 minutes</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Denied</div>
+      <div class="stat-value" id="stat-denied">0</div>
+      <div class="stat-sub">Last 60 minutes</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Menu Syncs</div>
+      <div class="stat-value" id="stat-syncs">0</div>
+      <div class="stat-sub">Last 60 minutes</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Errors</div>
+      <div class="stat-value" id="stat-errors">0</div>
+      <div class="stat-sub">Last 60 minutes</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">All-Time Events</div>
+      <div class="stat-value" id="stat-total">0</div>
+      <div class="stat-sub">Since startup</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- Event log -->
+    <div class="panel">
+      <div class="panel-header">
+        <strong>Order & Event Log</strong>
+        <span id="event-count">0 events</span>
+      </div>
+      <div class="filters">
+        <button class="filter-btn active" data-filter="ALL">All</button>
+        <button class="filter-btn" data-filter="ORDER_RECEIVED">Orders</button>
+        <button class="filter-btn" data-filter="ORDER_ACCEPTED">Accepted</button>
+        <button class="filter-btn" data-filter="ORDER_DENIED">Denied</button>
+        <button class="filter-btn" data-filter="MENU_SYNC">Menu Sync</button>
+        <button class="filter-btn" data-filter="ERROR">Errors</button>
+      </div>
+      <div class="event-list" id="event-list">
+        <div class="empty">
+          <div class="empty-icon">📭</div>
+          Waiting for events…
+        </div>
+      </div>
+    </div>
+
+    <!-- Clients sidebar -->
+    <div class="panel">
+      <div class="panel-header">
+        <strong>Restaurant Clients</strong>
+        <span id="client-count">—</span>
+      </div>
+      <div id="client-list">
+        <div class="empty"><div class="empty-icon">🏪</div>No clients registered</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modal-bg" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <button class="modal-close" onclick="document.getElementById('modal-bg').classList.remove('open')">×</button>
+    <div class="modal-title" id="modal-title">Event Detail</div>
+    <pre id="modal-body"></pre>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────
+  let allEvents = [];
+  let activeFilter = 'ALL';
+  let selectedStoreId = null;
+
+  // ── Clock ────────────────────────────────────────────────────────────────
+  function updateClock() {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── API helpers ──────────────────────────────────────────────────────────
+  async function apiFetch(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return r.json();
+  }
+
+  async function apiPost(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────────
+  function toast(msg, isError = false) {
+    const el = document.createElement('div');
+    el.className = 'toast' + (isError ? ' error' : '');
+    el.textContent = msg;
+    document.getElementById('toasts').appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ── Stats ────────────────────────────────────────────────────────────────
+  async function refreshStats() {
+    try {
+      const s = await apiFetch('/dashboard/stats');
+      document.getElementById('stat-orders').textContent   = s.ordersLastHour;
+      document.getElementById('stat-accepted').textContent = s.acceptedLastHour;
+      document.getElementById('stat-denied').textContent   = s.deniedLastHour;
+      document.getElementById('stat-syncs').textContent    = s.menuSyncsLastHour;
+      document.getElementById('stat-errors').textContent   = s.errorsLastHour;
+      document.getElementById('stat-total').textContent    = s.totalEventsAllTime;
+    } catch(e) {
+      document.getElementById('uptime-label').textContent = '● Disconnected';
+      document.getElementById('uptime-label').style.color = 'var(--red)';
+    }
+  }
+
+  // ── Clients ──────────────────────────────────────────────────────────────
+  async function refreshClients() {
+    const clients = await apiFetch('/dashboard/clients');
+    const container = document.getElementById('client-list');
+    document.getElementById('client-count').textContent = clients.length + ' clients';
+
+    if (!clients.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">🏪</div>No clients registered</div>';
+      return;
+    }
+
+    container.innerHTML = clients.map(c => `
+      <div class="client-item ${selectedStoreId === c.storeId ? 'active' : ''}"
+           onclick="selectClient('${c.storeId}')">
+        <div class="client-name">${c.name}</div>
+        <div class="client-meta">POS: ${c.posEndpoint}</div>
+        <div class="client-store-id">${c.storeId}</div>
+      </div>
+    `).join('');
+  }
+
+  function selectClient(storeId) {
+    selectedStoreId = selectedStoreId === storeId ? null : storeId;
+    refreshClients();
+    renderEvents();
+  }
+
+  // ── Events ───────────────────────────────────────────────────────────────
+  async function refreshEvents() {
+    const url = selectedStoreId
+      ? `/dashboard/events?limit=100&storeId=${selectedStoreId}`
+      : '/dashboard/events?limit=100';
+    allEvents = await apiFetch(url);
+    renderEvents();
+  }
+
+  function renderEvents() {
+    const filtered = activeFilter === 'ALL'
+      ? allEvents
+      : allEvents.filter(e => e.type === activeFilter);
+
+    const list = document.getElementById('event-list');
+    document.getElementById('event-count').textContent = filtered.length + ' events';
+
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>No events yet</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(ev => {
+      const time = new Date(ev.timestamp).toLocaleTimeString('en-US', { hour12: false });
+      const detail = buildDetail(ev);
+      const actions = ev.type === 'ORDER_RECEIVED'
+        ? `<button class="btn-sm btn-accept" onclick="acceptOrder('${ev.orderId}','${ev.storeId}',event)">Accept</button>
+           <button class="btn-sm btn-deny"   onclick="denyOrder('${ev.orderId}','${ev.storeId}',event)">Deny</button>`
+        : '';
+
+      return `
+        <div class="event-row" onclick="showDetail(${JSON.stringify(JSON.stringify(ev))})">
+          <span class="event-time">${time}</span>
+          <span class="event-type type-${ev.type}">${ev.type.replace(/_/g,' ')}</span>
+          <span class="event-detail">${detail}</span>
+          <div class="event-actions">${actions}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function buildDetail(ev) {
+    if (ev.orderId) return `<strong>Order</strong> ${ev.orderId.slice(0,8)}… · Store ${ev.storeId || '—'}`;
+    if (ev.storeId) return `<strong>Store</strong> ${ev.storeId}`;
+    if (ev.error)   return `<strong>Error:</strong> ${ev.error}`;
+    return ev.type;
+  }
+
+  // ── Modal ────────────────────────────────────────────────────────────────
+  function showDetail(jsonStr) {
+    const ev = JSON.parse(jsonStr);
+    document.getElementById('modal-title').textContent = ev.type.replace(/_/g,' ');
+    document.getElementById('modal-body').textContent  = JSON.stringify(ev, null, 2);
+    document.getElementById('modal-bg').classList.add('open');
+  }
+  function closeModal(e) {
+    if (e.target.id === 'modal-bg') document.getElementById('modal-bg').classList.remove('open');
+  }
+
+  // ── Order actions ────────────────────────────────────────────────────────
+  async function acceptOrder(orderId, storeId, e) {
+    e.stopPropagation();
+    const r = await apiPost(`/orders/${orderId}/accept`, { storeId });
+    r.success ? toast(`✅ Order ${orderId.slice(0,8)} accepted`) : toast(r.error, true);
+  }
+  async function denyOrder(orderId, storeId, e) {
+    e.stopPropagation();
+    const r = await apiPost(`/orders/${orderId}/deny`, { storeId });
+    r.success ? toast(`🚫 Order ${orderId.slice(0,8)} denied`) : toast(r.error, true);
+  }
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      renderEvents();
+    });
+  });
+
+  // ── Poll ─────────────────────────────────────────────────────────────────
+  async function refresh() {
+    await Promise.all([refreshStats(), refreshEvents(), refreshClients()]);
+  }
+
+  refresh();
+  setInterval(refresh, 5000); // poll every 5s
+</script>
+</body>
+</html>
