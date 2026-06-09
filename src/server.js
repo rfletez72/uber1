@@ -75,3 +75,6 @@ module.exports = app;
 
  // https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=<SPACE_DELIMITED_LIST_OF_SCOPES>&response_type=code
  // GET https://kukipos-sync.azurewebsites.net/uberlink/?code=<AUTHORIZATION_CODE>
+ // https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code
+
+ 
