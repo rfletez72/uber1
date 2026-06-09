@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 
+const appVersion = 2;
 const express = require('express');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
@@ -13,6 +14,7 @@ const webhookRoutes = require('./routes/webhooks');
 const orderRoutes = require('./routes/orders');
 const menuRoutes = require('./routes/menu');
 const dashboardRoutes = require('./routes/dashboard');
+const uberlinkRoutes = require('./routes/uberlink');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,9 +45,11 @@ app.use('/webhooks', webhookRoutes);
 app.use('/orders', orderRoutes);
 app.use('/menu', menuRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use('/uberlink', uberlinkRoutes);
 
 // Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime(), version: appVersion }));
 
 // ─── Global Error Handler ────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -64,3 +68,10 @@ module.exports = app;
 
 // npm start
 // npm run dev
+
+// with this we generated a key for UBER_WEBHOOK_SECRET=<the value you generated>
+// node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+
+ // https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=<SPACE_DELIMITED_LIST_OF_SCOPES>&response_type=code
+ // GET https://kukipos-sync.azurewebsites.net/uberlink/?code=<AUTHORIZATION_CODE>

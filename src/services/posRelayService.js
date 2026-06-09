@@ -1,6 +1,6 @@
 'use strict';
 
-const axios = require('axios');
+const { postData } = require('../utils/fetch');
 const { loadClientMap } = require('../config/clients');
 const logger = require('../config/logger');
 
@@ -82,17 +82,11 @@ async function relayOrderToPOS(uberOrder) {
     posEndpoint: client.posEndpoint
   });
 
-  const response = await axios.post(client.posEndpoint, posPayload, {
-    timeout: 8000,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  const posResponse = await postData(client.posEndpoint, posPayload);
 
-  logger.info('POS accepted order', {
-    orderId: uberOrder.id,
-    posStatus: response.status
-  });
+  logger.info('POS accepted order', { orderId: uberOrder.id });
 
-  return { success: true, posEndpoint: client.posEndpoint, posResponse: response.data };
+  return { success: true, posEndpoint: client.posEndpoint, posResponse };
 }
 
 module.exports = { relayOrderToPOS, transformOrder };

@@ -35,7 +35,9 @@ getTokenFromCode('crd.EA.CAESEHEjOQRirE5Fl6D9ScbmUjsiATE.Gbr3m0oNK0K6l4bovQBFYA9
 
 
 // first we need the token from:
-// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://cosmic-dealing-guy.ngrok-free.dev&scope=eats.pos_provisioning&response_type=code
+// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code
+
+
 // scope=eats.pos_provisioning%20eats.order%20eats.store
 // we will get the code as follow
 // https://cosmic-dealing-guy.ngrok-free.dev/?code=crd.EA.CAESEFao9eFEcE2-slFdMXAsqMQiATE.-lR8Y9JYH7blnlGoCQEplX5VXbwJg4th2smIYO7ZNP4#_
