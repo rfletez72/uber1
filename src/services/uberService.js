@@ -1,7 +1,7 @@
 'use strict';
 
 const { getData, postData, patchData } = require('../utils/fetch');
-const { getAccessToken } = require('./tokenService');
+const { getAccessToken } = require('./uberTokenService');
 const logger = require('../config/logger');
 
 const BASE_URL = global.uber;

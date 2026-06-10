@@ -1211,3 +1211,27 @@
 {"level":"info","message":"📊 Dashboard → http://localhost:3000","timestamp":"2026-06-10 12:48:02"}
 {"level":"info","message":"🪝 Webhook endpoint → http://localhost:3000/webhooks/uber-eats","timestamp":"2026-06-10 12:48:02"}
 {"level":"info","message":"Store cache ready — 5 store(s) loaded from stores.json","timestamp":"2026-06-10 12:48:02"}
+{"level":"info","message":"🍔 Uber Eats POS integration running on port 3000","timestamp":"2026-06-10 17:04:30"}
+{"level":"info","message":"📊 Dashboard → http://localhost:3000","timestamp":"2026-06-10 17:04:30"}
+{"level":"info","message":"🪝 Webhook endpoint → http://localhost:3000/webhooks/uber-eats","timestamp":"2026-06-10 17:04:30"}
+{"level":"info","message":"🍔 Uber Eats POS integration running on port 3000","timestamp":"2026-06-10 17:07:50"}
+{"level":"info","message":"📊 Dashboard → http://localhost:3000","timestamp":"2026-06-10 17:07:50"}
+{"level":"info","message":"🪝 Webhook endpoint → http://localhost:3000/webhooks/uber-eats","timestamp":"2026-06-10 17:07:50"}
+{"level":"info","message":"DB tables ready","timestamp":"2026-06-10 17:07:53"}
+{"count":0,"level":"info","message":"Tokens loaded from DB","timestamp":"2026-06-10 17:07:53"}
+{"count":0,"level":"info","message":"Store cache loaded from DB","timestamp":"2026-06-10 17:07:53"}
+{"level":"warn","message":"No tokens in DB — complete OAuth at /uberlink to link stores","timestamp":"2026-06-10 17:07:53"}
+{"level":"info","message":"🍔 Uber Eats POS integration running on port 3000","timestamp":"2026-06-10 17:12:27"}
+{"level":"info","message":"📊 Dashboard → http://localhost:3000","timestamp":"2026-06-10 17:12:27"}
+{"level":"info","message":"🪝 Webhook endpoint → http://localhost:3000/webhooks/uber-eats","timestamp":"2026-06-10 17:12:27"}
+{"level":"info","message":"DB tables ready","timestamp":"2026-06-10 17:12:29"}
+{"count":0,"level":"info","message":"Tokens loaded from DB","timestamp":"2026-06-10 17:12:29"}
+{"count":0,"level":"info","message":"Store cache loaded from DB","timestamp":"2026-06-10 17:12:29"}
+{"level":"warn","message":"No tokens in DB — complete OAuth at /uberlink to link stores","timestamp":"2026-06-10 17:12:29"}
+{"level":"info","message":"🍔 Uber Eats POS integration running on port 3000","timestamp":"2026-06-10 17:29:11"}
+{"level":"info","message":"📊 Dashboard → http://localhost:3000","timestamp":"2026-06-10 17:29:11"}
+{"level":"info","message":"🪝 Webhook endpoint → http://localhost:3000/webhooks/uber-eats","timestamp":"2026-06-10 17:29:11"}
+{"level":"info","message":"DB tables ready","timestamp":"2026-06-10 17:29:13"}
+{"count":0,"level":"info","message":"Tokens loaded from DB","timestamp":"2026-06-10 17:29:13"}
+{"count":0,"level":"info","message":"Store cache loaded from DB","timestamp":"2026-06-10 17:29:13"}
+{"level":"warn","message":"No tokens in DB — complete OAuth at /uberlink to link stores","timestamp":"2026-06-10 17:29:13"}

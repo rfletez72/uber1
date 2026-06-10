@@ -1,94 +1,118 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const UberStores = require('../model/UberStores');
 const logger = require('./logger');
-
-/**
- * STORE CACHE
- * ─────────────────────────────────────────────────────────────────────────────
- * Persists the Uber Eats store registry to stores.json.
- * Populated automatically after each OAuth link (/uberlink).
- *
- * Shape of stores.json:
- *   {
- *     "<uber_store_id>": {
- *       "name": "Taco Fuego",
- *       "posEndpoint": "http://...",   ← set manually or via PATCH /dashboard/clients/:id
- *       "uberStatus": { ... },          ← from Uber API
- *       "lastSyncedAt": "2026-06-09T..."
- *     }
- *   }
- */
-
-const STORES_FILE = path.join(__dirname, '../../stores.json');
 
 let _cache = {};
 
-function load() {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function rowToCache(row) {
+  return {
+    name: row.name,
+    posEndpoint: row.pos_endpoint,
+    status: row.status,
+    location: {
+      address: row.address,
+      address_2: row.address_2,
+      city: row.city,
+      state: row.state,
+      postal_code: row.postal_code,
+      country: row.country,
+      latitude: row.latitude,
+      longitude: row.longitude
+    },
+    timezone: row.timezone,
+    avgPrepTime: row.avg_prep_time,
+    webUrl: row.web_url,
+    posIntegrationEnabled: row.pos_integration_enabled,
+    lastSync: row.lastSync,
+    uberAccountId: row.idUberAccount
+  };
+}
+
+function storeToRow(storeId, data) {
+  return {
+    store_id: storeId,
+    name: data.name || null,
+    pos_endpoint: data.posEndpoint || null,
+    status: data.status || null,
+    address: data.location?.address || null,
+    address_2: data.location?.address_2 || null,
+    city: data.location?.city || null,
+    state: data.location?.state || null,
+    postal_code: data.location?.postal_code || null,
+    country: data.location?.country || null,
+    latitude: data.location?.latitude || null,
+    longitude: data.location?.longitude || null,
+    timezone: data.timezone || null,
+    avg_prep_time: data.avgPrepTime || null,
+    web_url: data.webUrl || null,
+    pos_integration_enabled: data.posIntegrationEnabled ?? false,
+    lastSync: data.lastSync ? new Date(data.lastSync) : new Date(),
+    idUberAccount: data.uberAccountId || null
+  };
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+async function loadStoresFromDB() {
   try {
-    _cache = JSON.parse(fs.readFileSync(STORES_FILE, 'utf8'));
-    logger.info('Store cache loaded from stores.json', { count: Object.keys(_cache).length });
-  } catch {
-    logger.warn('stores.json not found — store cache empty until next OAuth link');
+    const rows = await UberStores.findAll();
+    _cache = {};
+    for (const row of rows) {
+      _cache[row.store_id] = rowToCache(row);
+    }
+    logger.info('Store cache loaded from DB', { count: rows.length });
+  } catch (err) {
+    logger.warn('Could not load stores from DB — cache empty', { error: err.message });
     _cache = {};
   }
 }
 
-function save() {
-  try {
-    fs.writeFileSync(STORES_FILE, JSON.stringify(_cache, null, 2));
-  } catch (err) {
-    logger.warn('Could not persist store cache to stores.json', { error: err.message });
-  }
-}
-
-/**
- * Returns the current in-memory store map.
- * Shape matches what clients.js / posRelayService expect:
- *   { storeId: { name, posEndpoint } }
- */
 function getStoreMap() {
   return _cache;
 }
 
-/**
- * Merge stores fetched from Uber API into the cache.
- * Preserves existing posEndpoint so manual config is never overwritten.
- *
- * @param {Array<{ store_id: string, name: string, status?: object }>} uberStores
- */
-function mergeUberStores(uberStores) {
+async function mergeUberStores(uberStores, uberAccountId) {
   for (const store of uberStores) {
     const id = store.store_id;
-    _cache[id] = {
-      name: store.name || _cache[id]?.name || id,
-      posEndpoint: _cache[id]?.posEndpoint || null,
+    const existing = _cache[id] || {};
+
+    const merged = {
+      name: store.name || existing.name || id,
+      posEndpoint: existing.posEndpoint || null,
       status: store.status || null,
-      location: store.location || null,
-      timezone: store.timezone || null,
-      avgPrepTime: store.avg_prep_time || null,
-      webUrl: store.web_url || null,
-      posIntegrationEnabled: store.pos_data?.integration_enabled ?? false,
-      lastSyncedAt: new Date().toISOString()
+      location: store.location || existing.location || null,
+      timezone: store.timezone || existing.timezone || null,
+      avgPrepTime: store.avg_prep_time || existing.avgPrepTime || null,
+      webUrl: store.web_url || existing.webUrl || null,
+      posIntegrationEnabled: store.pos_data?.integration_enabled ?? existing.posIntegrationEnabled ?? false,
+      lastSyncedAt: new Date().toISOString(),
+      uberAccountId: uberAccountId || existing.uberAccountId || null
     };
+
+    _cache[id] = merged;
+
+    try {
+      await UberStores.upsert(storeToRow(id, merged));
+    } catch (err) {
+      logger.warn('Could not upsert store to DB', { storeId: id, error: err.message });
+    }
   }
-  save();
+
   logger.info('Store cache merged from Uber API', { count: uberStores.length, total: Object.keys(_cache).length });
 }
 
-/**
- * Update one store's fields (e.g. set posEndpoint after onboarding).
- *
- * @param {string} storeId
- * @param {object} fields
- */
-function updateStore(storeId, fields) {
+async function updateStore(storeId, fields) {
   _cache[storeId] = { ..._cache[storeId], ...fields };
-  save();
-  logger.info('Store updated in cache', { storeId, fields });
+
+  try {
+    await UberStores.upsert(storeToRow(storeId, _cache[storeId]));
+    logger.info('Store updated in DB', { storeId, fields });
+  } catch (err) {
+    logger.warn('Could not update store in DB', { storeId, error: err.message });
+  }
 }
 
-load();
-
-module.exports = { getStoreMap, mergeUberStores, updateStore };
+module.exports = { loadStoresFromDB, getStoreMap, mergeUberStores, updateStore };

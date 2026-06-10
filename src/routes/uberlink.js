@@ -1,10 +1,8 @@
 'use strict';
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const { postForm } = require('../utils/fetch');
-const { setTokens } = require('../services/tokenService');
+const { setTokens } = require('../services/uberTokenService');
 const { getStores } = require('../services/uberService');
 const { mergeUberStores } = require('../config/storeCache');
 const logger = require('../config/logger');
@@ -13,13 +11,14 @@ const router = express.Router();
 
 const UBER_TOKEN_URL = 'https://sandbox-login.uber.com/oauth/v2/token';
 const REDIRECT_URI = 'https://kukipos-sync.azurewebsites.net/uberlink';
-const LINK_FILE = path.join(__dirname, '../../linkuber.json');
 
-// GET /uberlink?code=...
-// Uber redirects here after the client authorizes. We exchange the code for
-// tokens and persist them to linkuber.json so the server can use them immediately.
+// GET /uberlink?code=...&client=<label>
+// Uber redirects here after the client authorizes. We exchange the code for tokens,
+// save them to the DB under the given client label, and sync the linked stores.
+// The `client` param (e.g. "taco-fuego") identifies which Uber account this is.
 router.get('/', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state: rawState = 'NewUser' } = req.query;
+  const clientId = rawState.replace(/[^a-zA-Z0-9]/g, '');
 
   if (error) {
     logger.warn('Uber OAuth denied by user', { error });
@@ -41,39 +40,32 @@ router.get('/', async (req, res) => {
 
     const data = await postForm(UBER_TOKEN_URL, params);
 
-    const expiresAt = Date.now() + data.expires_in * 1000;
+    const linkedAt = new Date();
 
-    const record = {
-      ...data,
-      expires_at: expiresAt,
-      expires_at_iso: new Date(expiresAt).toISOString(),
-      linked_at: new Date().toISOString()
-    };
+    // Persist to DB, hot-update cache, get the auto-increment id for FK linking
+    const uberAccountId = await setTokens(clientId, data.access_token, data.refresh_token, data.expires_in, data.scope, linkedAt);
 
-    fs.writeFileSync(LINK_FILE, JSON.stringify(record, null, 2));
-
-    // Hot-update the in-memory token cache so API calls work immediately
-    setTokens(data.access_token, data.refresh_token, data.expires_in);
-
-    // Fetch all stores linked to this account and merge into stores.json
+    // Fetch all stores for this Uber account and link them via uberAccountId
     let stores = [];
     try {
       stores = await getStores();
-      mergeUberStores(stores);
+      await mergeUberStores(stores, uberAccountId);
     } catch (err) {
       logger.warn('Could not fetch stores after OAuth link — run /menu sync manually', { error: err.message });
     }
 
-    logger.info('Uber OAuth link complete — tokens saved to linkuber.json', {
+    logger.info('Uber OAuth link complete — tokens saved to DB', {
+      clientId,
+      uberAccountId,
       scope: data.scope,
-      expiresAt: record.expires_at_iso,
       storeCount: stores.length
     });
 
     res.json({
       success: true,
+      clientId,
+      uberAccountId,
       scope: data.scope,
-      expires_at: record.expires_at_iso,
       stores: stores.map(s => ({ store_id: s.store_id, name: s.name }))
     });
   } catch (err) {

@@ -3,7 +3,7 @@
 require('dotenv').config();
 
 global.uber = process.env.UBER_BASE_URL || 'https://test-api.uber.com/v1/eats';
-global.appVer = '2026.06.10';
+global.appVer = '2026.06.10.2';
 // Production API -> 'https://api.uber.com/v1/eats';
 
 const express = require('express');
@@ -12,9 +12,14 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const logger = require('./config/logger');
 
+// ─── Database ─────────────────────────────────────────────────────────────────
+const sequelize = require('./model/index');
+const UberAccount = require('./model/UberAccount');
+const UberStores = require('./model/UberStores');
+
 // ─── Services / Cache ────────────────────────────────────────────────────────
-const fs = require('fs');
-const { getStoreMap, mergeUberStores } = require('./config/storeCache');
+const { loadTokensFromDB, getAccessToken } = require('./services/uberTokenService');
+const { loadStoresFromDB, getStoreMap, mergeUberStores } = require('./config/storeCache');
 const { getStores } = require('./services/uberService');
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -73,9 +78,10 @@ app.use((err, req, res, next) => {
 
 // ─── Startup Store Sync ───────────────────────────────────────────────────────
 async function syncStoresOnStartup() {
-  const hasToken = fs.existsSync(path.join(__dirname, '../linkuber.json'));
-  if (!hasToken) {
-    logger.warn('No linkuber.json found — complete OAuth at /uberlink to link stores');
+  try {
+    await getAccessToken();
+  } catch {
+    logger.warn('No tokens in DB — complete OAuth at /uberlink to link stores');
     return;
   }
 
@@ -96,11 +102,18 @@ async function syncStoresOnStartup() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`🍔 Uber Eats POS integration running on port ${PORT}`);
   logger.info(`📊 Dashboard → http://localhost:${PORT}`);
   logger.info(`🪝 Webhook endpoint → http://localhost:${PORT}/webhooks/uber-eats`);
-  syncStoresOnStartup();
+
+  await UberAccount.sync({ alter: false });
+  await UberStores.sync({ alter: false });
+  logger.info('DB tables ready');
+
+  await loadTokensFromDB();
+  await loadStoresFromDB();
+  await syncStoresOnStartup();
 });
 
 module.exports = app;
@@ -112,8 +125,15 @@ module.exports = app;
 // node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 
- // https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=<SPACE_DELIMITED_LIST_OF_SCOPES>&response_type=code
- // GET https://kukipos-sync.azurewebsites.net/uberlink/?code=<AUTHORIZATION_CODE>
- // https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code
+// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=<SPACE_DELIMITED_LIST_OF_SCOPES>&response_type=code
+// GET https://kukipos-sync.azurewebsites.net/uberlink/?code=<AUTHORIZATION_CODE>
+// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code
 
- 
+//  new call with state (client id)
+// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code&state=taco-fuego
+// https://kukipos-sync.azurewebsites.net/uberlink?code=AUTH_CODE&state=taco-fuego
+
+
+// Alt + Ctrl + F to align the code
+
+// https://kukipos-sync.azurewebsites.net/health
