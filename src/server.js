@@ -3,7 +3,7 @@
 require('dotenv').config();
 
 global.uber = process.env.UBER_BASE_URL || 'https://test-api.uber.com/v1/eats';
-global.appVer = '2026.06.10.2';
+global.appVer = '2026.06.10.3';
 // Production API -> 'https://api.uber.com/v1/eats';
 
 const express = require('express');
