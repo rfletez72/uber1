@@ -1,0 +1,10 @@
+{
+  "access_token": "IA.AQAAAAeyjFjb-7ddtt9PFpNffBQlO-Se0KqS7VdipTt84rWvw1bllUGt1IM_My8XxDwWAECpCnnOG-XqWQ8ioKWwpNhgiKncNhmXqmix6THVZzjVb-P7a0-lNELttIt-gpFvIS4TimRku0zEzQTn9so3JLQE7WDMInndmI9b2ry4EQ",
+  "token_type": "Bearer",
+  "expires_in": 2592000,
+  "refresh_token": "MA.CAESEI_gfITx9U0riKkrMkCxxsciATEyATFCJDY2ODRkZWM4LWI4ODktNGQ5OC04NzQwLTFiMjAxOTRjN2QwMkogR29QVmJTVUFvSWpsUm1rNkVqLWpfX0hCUGpwZk9nUDNSJDdlOTI4Nzc4LTlhYmMtNDg0Yi04Yzk2LTAyYWI1NGU4MjhiOQ.l7iws9D0O4rqof3Cymf-yL-MX_HeZ7ZVmdGutjBE_tc.kxPNufYsPP5Cnfd0-HjmOFR2k-O5Th9UtEU2Y2tzWII",
+  "scope": "eats.pos_provisioning offline_access",
+  "expires_at": 1783653333987,
+  "expires_at_iso": "2026-07-10T03:15:33.987Z",
+  "linked_at": "2026-06-10T03:15:33.987Z"
+}

@@ -2,12 +2,20 @@
 
 require('dotenv').config();
 
-const appVersion = 2;
+global.uber = process.env.UBER_BASE_URL || 'https://test-api.uber.com/v1/eats';
+global.appVer = '2026.06.10';
+// Production API -> 'https://api.uber.com/v1/eats';
+
 const express = require('express');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const logger = require('./config/logger');
+
+// ─── Services / Cache ────────────────────────────────────────────────────────
+const fs = require('fs');
+const { getStoreMap, mergeUberStores } = require('./config/storeCache');
+const { getStores } = require('./services/uberService');
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 const webhookRoutes = require('./routes/webhooks');
@@ -47,9 +55,15 @@ app.use('/menu', menuRoutes);
 app.use('/dashboard', dashboardRoutes);
 app.use('/uberlink', uberlinkRoutes);
 
-// Health check
-
-app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime(), version: appVersion }));
+// Health Check
+app.get('/health', (req, res) => {
+  const s = Math.floor(process.uptime());
+  const days = Math.floor(s / 86400);
+  const hh = Math.floor((s % 86400) / 3600).toString().padStart(2, '0');
+  const mm = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+  const ss = (s % 60).toString().padStart(2, '0');
+  res.json({ status: 'ok', uptime: `${days}d ${hh}:${mm}:${ss}`, version: global.appVer });
+});
 
 // ─── Global Error Handler ────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -57,11 +71,36 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// ─── Startup Store Sync ───────────────────────────────────────────────────────
+async function syncStoresOnStartup() {
+  const hasToken = fs.existsSync(path.join(__dirname, '../linkuber.json'));
+  if (!hasToken) {
+    logger.warn('No linkuber.json found — complete OAuth at /uberlink to link stores');
+    return;
+  }
+
+  const storeCount = Object.keys(getStoreMap()).length;
+  if (storeCount > 0) {
+    logger.info(`Store cache ready — ${storeCount} store(s) loaded from stores.json`);
+    return;
+  }
+
+  logger.info('Store cache empty — token found, syncing stores from Uber API...');
+  try {
+    const stores = await getStores();
+    mergeUberStores(stores);
+    logger.info(`Startup store sync complete — ${stores.length} store(s) loaded`);
+  } catch (err) {
+    logger.warn('Startup store sync failed — run /menu sync manually', { error: err.message });
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   logger.info(`🍔 Uber Eats POS integration running on port ${PORT}`);
   logger.info(`📊 Dashboard → http://localhost:${PORT}`);
   logger.info(`🪝 Webhook endpoint → http://localhost:${PORT}/webhooks/uber-eats`);
+  syncStoresOnStartup();
 });
 
 module.exports = app;

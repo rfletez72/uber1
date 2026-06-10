@@ -1,8 +1,9 @@
 'use strict';
 require('dotenv').config();
 
-const axios = require('axios');
+const { postForm } = require('./src/utils/fetch');
 
+// const axios = require('axios');
 
 async function getTokenFromCode(authorizationCode) {
   const params = new URLSearchParams({
@@ -13,22 +14,23 @@ async function getTokenFromCode(authorizationCode) {
     code: authorizationCode
   });
 
-  const response = await axios.post(
-    'https://sandbox-login.uber.com/oauth/v2/token',
-    params.toString(),
-    {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    }
-  );
+  return postForm('https://sandbox-login.uber.com/oauth/v2/token', params);
 
-  return response.data;
+  // before with axios
+  // const response = await axios.post(
+  //   'https://sandbox-login.uber.com/oauth/v2/token', params.toString(),
+  //   {
+  //     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  //   }
+  // );
+  // return response.data;
 }
 
 console.log('c: ', process.env.UBER_CLIENT_ID);
 
 getTokenFromCode('crd.EA.CAESEHEjOQRirE5Fl6D9ScbmUjsiATE.Gbr3m0oNK0K6l4bovQBFYA9yw3d1I52gwFysfu32pFg#_')
   .then(data => console.log(JSON.stringify(data, null, 2)))
-  .catch(err => console.error(err.response?.data || err.message));
+  .catch(err => console.error(err.message));
 
 // To Run type:
 // $node get1token.js

@@ -4,7 +4,8 @@ const { getData, postData, patchData } = require('../utils/fetch');
 const { getAccessToken } = require('./tokenService');
 const logger = require('../config/logger');
 
-const BASE_URL = process.env.UBER_BASE_URL || 'https://api.uber.com/v1/eats';
+const BASE_URL = global.uber;
+
 
 async function authHeaders() {
   const token = await getAccessToken();
