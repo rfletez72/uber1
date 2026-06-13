@@ -1,5 +1,7 @@
 'use strict';
 
+const TIMEOUT_MS = 30_000;
+
 function networkError(err) {
   if (err.message?.toLowerCase() === 'failed to fetch')
     throw new Error("Please check your network connection. It seems either you're offline or the server is not reachable at the moment.");
@@ -14,7 +16,7 @@ async function parseResponse(res) {
 async function getData(url, headers = {}) {
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (err) { networkError(err); }
 
   const body = await parseResponse(res);
@@ -28,7 +30,8 @@ async function postData(url, data, headers = {}) {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
     });
   } catch (err) { networkError(err); }
 
@@ -44,7 +47,8 @@ async function postForm(url, params, headers = {}) {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
-      body: params.toString()
+      body: params.toString(),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
     });
   } catch (err) { networkError(err); }
 
@@ -59,7 +63,8 @@ async function patchData(url, data, headers = {}) {
     res = await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
     });
   } catch (err) { networkError(err); }
 
