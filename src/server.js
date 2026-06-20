@@ -10,12 +10,9 @@ const express = require('express');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const logger = require('./config/logger');
 
 // ─── Database ─────────────────────────────────────────────────────────────────
-const sequelize = require('./model/index');
-const UberAccount = require('./model/UberAccount');
-const UberStores = require('./model/UberStores');
+const { syncTables } = require('./model/index');
 
 // ─── Services / Cache ────────────────────────────────────────────────────────
 const { loadTokensFromDB, getAccessToken } = require('./services/uberTokenService');
@@ -32,8 +29,8 @@ const uberlinkRoutes = require('./routes/uberlink');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Global Middleware ────────────────────────────────────────────────────────
-app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
+// ─── Global Middleware to log the traffic ────────────────────────────────────────────────────────
+// app.use(morgan('combined', { stream: { write: (msg) => console.log(msg.trim()) } }));
 
 // JSON body parser for all routes EXCEPT /webhooks (which uses raw for HMAC)
 app.use((req, res, next) => {
@@ -72,7 +69,7 @@ app.get('/health', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  logger.error('Unhandled error', { error: err.message, stack: err.stack });
+  console.error('Unhandled error', err.message, err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -81,35 +78,34 @@ async function syncStoresOnStartup() {
   try {
     await getAccessToken();
   } catch {
-    logger.warn('No tokens in DB — complete OAuth at /uberlink to link stores');
+    console.warn('No tokens in DB — complete OAuth at /uberlink to link stores');
     return;
   }
 
   const storeCount = Object.keys(getStoreMap()).length;
   if (storeCount > 0) {
-    logger.info(`Store cache ready — ${storeCount} store(s) loaded from stores.json`);
+    console.log(`Store cache ready — ${storeCount} store(s) loaded from stores.json`);
     return;
   }
 
-  logger.info('Store cache empty — token found, syncing stores from Uber API...');
+  console.log('Store cache empty — token found, syncing stores from Uber API...');
   try {
     const stores = await getStores();
     mergeUberStores(stores);
-    logger.info(`Startup store sync complete — ${stores.length} store(s) loaded`);
+    console.log(`Startup store sync complete — ${stores.length} store(s) loaded`);
   } catch (err) {
-    logger.warn('Startup store sync failed — run /menu sync manually', { error: err.message });
+    console.warn('Startup store sync failed — run /menu sync manually', err.message);
   }
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, async () => {
-  logger.info(`🍔 Uber Eats POS integration running on port ${PORT}`);
-  logger.info(`📊 Dashboard → http://localhost:${PORT}`);
-  logger.info(`🪝 Webhook endpoint → http://localhost:${PORT}/webhooks/uber-eats`);
+  console.log(`🍔 Uber Eats POS integration running on port ${PORT}`);
+  console.log(`📊 Dashboard → http://localhost:${PORT}`);
+  console.log(`🪝 Webhook endpoint → http://localhost:${PORT}/webhooks/uber-eats`);
 
-  await UberAccount.sync({ alter: false });
-  await UberStores.sync({ alter: false });
-  logger.info('DB tables ready');
+  await syncTables();
+  console.log('DB tables ready');
 
   await loadTokensFromDB();
   await loadStoresFromDB();
@@ -137,3 +133,5 @@ module.exports = app;
 // Alt + Ctrl + F to align the code
 
 // https://kukipos-sync.azurewebsites.net/health
+
+

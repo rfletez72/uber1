@@ -1,7 +1,7 @@
 'use strict';
 
 const { DataTypes } = require('sequelize');
-const sequelize = require('./db');
+const { sequelize } = require('./index');
 
 const UberAccount = sequelize.define('UberAccount', {
   id: {

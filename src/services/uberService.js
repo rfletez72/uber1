@@ -64,6 +64,18 @@ async function getStores() {
   return data?.stores || [];
 }
 
+// Activate POS integration for a store using the merchant's user access token
+// (authorization_code / eats.pos_provisioning scope — NOT client_credentials).
+// Must be called once per store after the OAuth link is complete.
+async function activatePosStore(storeId, userAccessToken) {
+  logger.info('Activating POS integration for store', { storeId });
+  return postData(
+    `${BASE_URL}/stores/${storeId}/pos_data`,
+    { pos_integration_enabled: true },
+    { Authorization: `Bearer ${userAccessToken}` }
+  );
+}
+
 module.exports = {
   acceptOrder,
   denyOrder,
@@ -71,5 +83,6 @@ module.exports = {
   syncMenu,
   updateItemAvailability,
   getStore,
-  getStores
+  getStores,
+  activatePosStore
 };

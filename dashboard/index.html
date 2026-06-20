@@ -414,7 +414,14 @@
     <div class="panel">
       <div class="panel-header">
         <strong>Restaurant Clients</strong>
-        <span id="client-count">—</span>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span id="client-count">—</span>
+          <button class="btn-sm btn-accept" id="btn-activate" onclick="activateStores()">Activate POS</button>
+        </div>
+      </div>
+      <div id="activation-errors" style="display:none;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--red-dim)">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--red);margin-bottom:8px">Activation Errors</div>
+        <ul id="activation-error-list" style="list-style:none;display:flex;flex-direction:column;gap:6px"></ul>
       </div>
       <div id="client-list">
         <div class="empty"><div class="empty-icon">🏪</div>No clients registered</div>
@@ -597,6 +604,43 @@
       renderEvents();
     });
   });
+
+  // ── Activate POS ─────────────────────────────────────────────────────────
+  async function activateStores() {
+    const btn = document.getElementById('btn-activate');
+    btn.disabled = true;
+    btn.textContent = 'Activating…';
+    try {
+      const r = await fetch('/uberlink/activate', { method: 'POST' });
+      const data = await r.json();
+      const errBox = document.getElementById('activation-errors');
+      const errList = document.getElementById('activation-error-list');
+
+      const failed = (data.results || []).filter(s => !s.activated);
+      if (failed.length) {
+        errList.innerHTML = failed.map(s =>
+          `<li style="font-size:11px;color:var(--red)">
+            <strong>${s.name || s.store_id}</strong> — ${s.error}
+           </li>`
+        ).join('');
+        errBox.style.display = 'block';
+      } else {
+        errBox.style.display = 'none';
+      }
+
+      if (data.total === 0) {
+        toast('All stores already activated');
+      } else {
+        toast(`✅ ${data.activated}/${data.total} store(s) activated`);
+      }
+      refreshClients();
+    } catch (e) {
+      toast('Activation failed: ' + e.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Activate POS';
+    }
+  }
 
   // ── Poll ─────────────────────────────────────────────────────────────────
   async function refresh() {
