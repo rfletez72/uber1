@@ -1,7 +1,6 @@
 'use strict';
 
 const { postForm } = require('../utils/fetch');
-const UberAccount = require('../model/UberAccount');
 const logger = require('../config/logger');
 
 const UBER_TOKEN_URL = 'https://sandbox-login.uber.com/oauth/v2/token';
@@ -10,7 +9,7 @@ let _tokens = {};
 
 async function loadTokensFromDB() {
   try {
-    const rows = await UberAccount.findAll();
+    const rows = await global.Models.UberAccount.findAll();
     _tokens = {};
     for (const row of rows) {
       _tokens[row.client_id] = {
@@ -29,7 +28,7 @@ async function loadTokensFromDB() {
 // Upserts by client_id (unique) and returns the auto-increment id.
 async function saveToDB(clientId, accessToken, refreshToken, expiresAt, scope, linkedAt) {
   try {
-    await UberAccount.upsert({
+    await global.Models.UberAccount.upsert({
       client_id: clientId,
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -39,7 +38,7 @@ async function saveToDB(clientId, accessToken, refreshToken, expiresAt, scope, l
       expires_date: new Date(expiresAt),
       lastSync: linkedAt || new Date()
     });
-    const row = await UberAccount.findOne({ where: { client_id: clientId } });
+    const row = await global.Models.UberAccount.findOne({ where: { client_id: clientId } });
     return row.id;
   } catch (err) {
     logger.warn('Could not persist tokens to DB', { error: err.message });
@@ -86,7 +85,7 @@ async function getAccessToken(clientId) {
   return access_token;
 }
 
-// Called by /uberlink after OAuth completes. Returns the UberAccount auto-increment id.
+// Called by /uberlink after OAuth completes. Returns the global.Models.UberAccount auto-increment id.
 async function setTokens(clientId, accessToken, refreshToken, expiresIn, scope, linkedAt) {
   const expiresAt = Date.now() + expiresIn * 1000;
   const id = await saveToDB(clientId, accessToken, refreshToken, expiresAt, scope, linkedAt);

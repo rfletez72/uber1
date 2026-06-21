@@ -1,6 +1,12 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { Sequelize } = require('sequelize');
+const basename = path.basename(__filename);
+
+const db = {};
+let started = false;
 
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -16,26 +22,46 @@ const sequelize = new Sequelize(
         trustServerCertificate: false
       }
     },
-    logging: false
+    logging: false,
+    pool: { max: 5, min: 0, idle: 10000 }
   }
 );
 
-// Export sequelize before loading models — UberAccount/UberStores import ./db
-// which re-exports from here, so sequelize must exist before those requires run.
-module.exports.sequelize = sequelize;
+fs
+  .readdirSync(__dirname)
+  .filter(file => file.indexOf('.') !== 0 && file !== basename && file.slice(-3) === '.js')
+  .forEach(file => {
+    const model = require(path.join(__dirname, file))(sequelize);
+    db[model.name] = model;
+  });
 
-const UberAccount = require('./UberAccount');
-const UberStores = require('./UberStores');
+db.UberAccount.hasMany(db.UberStores, { foreignKey: 'idUberAccount' });
+db.UberStores.belongsTo(db.UberAccount, { foreignKey: 'idUberAccount' });
 
-UberAccount.hasMany(UberStores, { foreignKey: 'idUberAccount' });
-UberStores.belongsTo(UberAccount, { foreignKey: 'idUberAccount' });
+db.dbo = sequelize;
+db.Sequelize = Sequelize;
 
-sequelize.authenticate()
-  .then(() => console.log('SQL Server connected successfully.'))
-  .catch(err => console.error('SQL Server connection failed:', err.message));
-
-async function syncTables() {
-  await sequelize.sync({ alter: false });
+function syncTables(force) {
+  db.dbo.sync({ force })
+    .then(() => console.log('DB tables synced'))
+    .catch(err => {
+      console.error('Error syncing tables:', err.message);
+      process.exit(1);
+    });
 }
 
-module.exports.syncTables = syncTables;
+module.exports = (force) => {
+  if (!started) {
+    started = true;
+    db.dbo.authenticate()
+      .then(() => {
+        console.log('SQL Server connected successfully.');
+        syncTables(force);
+      })
+      .catch(err => {
+        console.error('SQL Server connection failed:', err.message);
+        process.exit(1);
+      });
+  }
+  return db;
+};

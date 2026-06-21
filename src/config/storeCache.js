@@ -1,6 +1,5 @@
 'use strict';
 
-const UberStores = require('../model/UberStores');
 const logger = require('./logger');
 
 let _cache = {};
@@ -58,7 +57,7 @@ function storeToRow(storeId, data) {
 
 async function loadStoresFromDB() {
   try {
-    const rows = await UberStores.findAll();
+    const rows = await global.Models.UberStores.findAll();
     _cache = {};
     for (const row of rows) {
       _cache[row.store_id] = rowToCache(row);
@@ -95,7 +94,7 @@ async function mergeUberStores(uberStores, uberAccountId) {
     _cache[id] = merged;
 
     try {
-      await UberStores.upsert(storeToRow(id, merged));
+      await global.Models.UberStores.upsert(storeToRow(id, merged));
     } catch (err) {
       logger.warn('Could not upsert store to DB', { storeId: id, error: err.message });
     }
@@ -108,7 +107,7 @@ async function updateStore(storeId, fields) {
   _cache[storeId] = { ..._cache[storeId], ...fields };
 
   try {
-    await UberStores.upsert(storeToRow(storeId, _cache[storeId]));
+    await global.Models.UberStores.upsert(storeToRow(storeId, _cache[storeId]));
     logger.info('Store updated in DB', { storeId, fields });
   } catch (err) {
     logger.warn('Could not update store in DB', { storeId, error: err.message });
