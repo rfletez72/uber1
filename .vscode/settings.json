@@ -3,7 +3,7 @@
   "workbench.editorAssociations": {
     "*.html": "default"
   },
-  "appService.zipIgnorePattern": ["node_modules{,/**}", ".vscode{,/**}"],
+  "appService.zipIgnorePattern": ["node_modules{,/**}", ".vscode{,/**}", "CLAUDE.md"],
   "appService.defaultWebAppToDeploy": "/subscriptions/3075e9c2-6bdf-462c-90c8-cc9c0abe22b1/resourceGroups/rfletez2/providers/Microsoft.Web/sites/kukipos-sync",
   "appService.deploySubpath": "."
 }

@@ -485,7 +485,9 @@
   // ── Stats ────────────────────────────────────────────────────────────────
   async function refreshStats() {
     try {
-      const s = await apiFetch('/dashboard/stats');
+      const resp = await apiFetch('/uber/dashboard/stats');
+      if (resp.error) { toast(resp.message, true); return; }
+      const s = resp.data;
       document.getElementById('stat-orders').textContent   = s.ordersLastHour;
       document.getElementById('stat-accepted').textContent = s.acceptedLastHour;
       document.getElementById('stat-denied').textContent   = s.deniedLastHour;
@@ -500,23 +502,29 @@
 
   // ── Clients ──────────────────────────────────────────────────────────────
   async function refreshClients() {
-    const clients = await apiFetch('/dashboard/clients');
-    const container = document.getElementById('client-list');
-    document.getElementById('client-count').textContent = clients.length + ' clients';
+    try {
+      const resp = await apiFetch('/uber/dashboard/clients');
+      if (resp.error) { toast(resp.message, true); return; }
+      const clients = resp.data;
+      const container = document.getElementById('client-list');
+      document.getElementById('client-count').textContent = clients.length + ' clients';
 
-    if (!clients.length) {
-      container.innerHTML = '<div class="empty"><div class="empty-icon">🏪</div>No clients registered</div>';
-      return;
+      if (!clients.length) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">🏪</div>No clients registered</div>';
+        return;
+      }
+
+      container.innerHTML = clients.map(c => `
+        <div class="client-item ${selectedStoreId === c.storeId ? 'active' : ''}"
+             onclick="selectClient('${c.storeId}')">
+          <div class="client-name">${c.name}</div>
+          <div class="client-meta">POS: ${c.posEndpoint}</div>
+          <div class="client-store-id">${c.storeId}</div>
+        </div>
+      `).join('');
+    } catch(e) {
+      toast('Failed to load clients: ' + e.message, true);
     }
-
-    container.innerHTML = clients.map(c => `
-      <div class="client-item ${selectedStoreId === c.storeId ? 'active' : ''}"
-           onclick="selectClient('${c.storeId}')">
-        <div class="client-name">${c.name}</div>
-        <div class="client-meta">POS: ${c.posEndpoint}</div>
-        <div class="client-store-id">${c.storeId}</div>
-      </div>
-    `).join('');
   }
 
   function selectClient(storeId) {
@@ -527,11 +535,17 @@
 
   // ── Events ───────────────────────────────────────────────────────────────
   async function refreshEvents() {
-    const url = selectedStoreId
-      ? `/dashboard/events?limit=100&storeId=${selectedStoreId}`
-      : '/dashboard/events?limit=100';
-    allEvents = await apiFetch(url);
-    renderEvents();
+    try {
+      const url = selectedStoreId
+        ? `/uber/dashboard/events?limit=100&storeId=${selectedStoreId}`
+        : '/uber/dashboard/events?limit=100';
+      const resp = await apiFetch(url);
+      if (resp.error) { toast(resp.message, true); return; }
+      allEvents = resp.data;
+      renderEvents();
+    } catch(e) {
+      toast('Failed to load events: ' + e.message, true);
+    }
   }
 
   function renderEvents() {
@@ -586,13 +600,21 @@
   // ── Order actions ────────────────────────────────────────────────────────
   async function acceptOrder(orderId, storeId, e) {
     e.stopPropagation();
-    const r = await apiPost(`/orders/${orderId}/accept`, { storeId });
-    r.success ? toast(`✅ Order ${orderId.slice(0,8)} accepted`) : toast(r.error, true);
+    try {
+      const r = await apiPost('/uber/orders/accept', { orderId, storeId });
+      r.error ? toast(r.message, true) : toast(`✅ Order ${orderId.slice(0,8)} accepted`);
+    } catch(e) {
+      toast('Failed to accept order: ' + e.message, true);
+    }
   }
   async function denyOrder(orderId, storeId, e) {
     e.stopPropagation();
-    const r = await apiPost(`/orders/${orderId}/deny`, { storeId });
-    r.success ? toast(`🚫 Order ${orderId.slice(0,8)} denied`) : toast(r.error, true);
+    try {
+      const r = await apiPost('/uber/orders/deny', { orderId, storeId });
+      r.error ? toast(r.message, true) : toast(`🚫 Order ${orderId.slice(0,8)} denied`);
+    } catch(e) {
+      toast('Failed to deny order: ' + e.message, true);
+    }
   }
 
   // ── Filters ──────────────────────────────────────────────────────────────
@@ -611,27 +633,27 @@
     btn.disabled = true;
     btn.textContent = 'Activating…';
     try {
-      const r = await fetch('/uberlink/activate', { method: 'POST' });
-      const data = await r.json();
+      const r = await fetch('/uber/uberlink/activate', { method: 'POST' });
+      const resp = await r.json();
       const errBox = document.getElementById('activation-errors');
       const errList = document.getElementById('activation-error-list');
 
-      const failed = (data.results || []).filter(s => !s.activated);
-      if (failed.length) {
-        errList.innerHTML = failed.map(s =>
-          `<li style="font-size:11px;color:var(--red)">
-            <strong>${s.name || s.store_id}</strong> — ${s.error}
-           </li>`
-        ).join('');
-        errBox.style.display = 'block';
+      if (resp.error) {
+        toast(resp.message, true);
       } else {
-        errBox.style.display = 'none';
-      }
-
-      if (data.total === 0) {
-        toast('All stores already activated');
-      } else {
-        toast(`✅ ${data.activated}/${data.total} store(s) activated`);
+        const { total, activated, results } = resp.data;
+        const failed = (results || []).filter(s => !s.activated);
+        if (failed.length) {
+          errList.innerHTML = failed.map(s =>
+            `<li style="font-size:11px;color:var(--red)">
+              <strong>${s.name || s.store_id}</strong> — ${s.error}
+             </li>`
+          ).join('');
+          errBox.style.display = 'block';
+        } else {
+          errBox.style.display = 'none';
+        }
+        toast(total === 0 ? 'All stores already activated' : `✅ ${activated}/${total} store(s) activated`);
       }
       refreshClients();
     } catch (e) {

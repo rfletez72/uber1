@@ -33,7 +33,7 @@ When adding new Uber API calls, check whether the required scope is available be
 
 ```
 [Uber Eats Platform]
-        │  POST /webhooks/uber-eats  (HMAC-SHA256 via X-Postmates-Signature)
+        │  POST /uber/webhooks/uber-eats  (HMAC-SHA256 via X-Postmates-Signature)
         ▼
 [This Middleware — Express on port 3000]
         │
@@ -49,7 +49,7 @@ When adding new Uber API calls, check whether the required scope is available be
 OAuth + provisioning flow:
 ```
 Browser → Uber authorize URL (scope=eats.pos_provisioning)
-        → GET /uberlink?code=...&state=<client-label>
+        → GET /uber/uberlink?code=...&state=<client-label>
         → tokens saved to UberAccount table
         → stores upserted in UberStores table (idUberAccount FK)
         → POST /stores/{store_id}/pos_data called per store (activates integration)
@@ -60,22 +60,22 @@ Browser → Uber authorize URL (scope=eats.pos_provisioning)
 ## Project conventions
 
 ### Models — factory pattern
-Each model file exports `(sequelize) => sequelize.define(...)`. `model/index.js` auto-discovers all `.js` files in its folder, calls each factory, builds the `db` object, and exposes it as `global.Models`. No model imports needed anywhere — just use `global.Models.UberAccount`, `global.Models.UberStores`.
+Each model file exports `(sequelize) => sequelize.define(...)`. `model/index.js` auto-discovers all `.js` files in its folder, calls each factory, builds the `db` object, and exposes it as `global.UberModels`. No model imports needed anywhere — just use `global.UberModels.UberAccount`, `global.UberModels.UberStores`.
 
 ```js
 // server.js (at project root)
-global.Models = require('./src/model/index')(false); // false = don't force-drop tables
+global.UberModels = require('./src/uber/model/index')(false); // false = don't force-drop tables
 ```
 
 ### API routes — factory pattern, one action per file
-Each file in `src/api/` exports `() => { const router = Router(); ...; return router; }`. In `server.js` require into a variable and mount as a pair, grouped by category. The full action path goes in `app.use()` so the route inside always uses `router.route('/').METHOD(...)`:
+Each file in `src/uber/api/` exports `() => { const router = Router(); ...; return router; }`. In `server.js` require into a variable and mount as a pair, grouped by category. The full action path goes in `app.use()` so the route inside always uses `router.route('/').METHOD(...)`:
 
 ```js
 // menu
-const menusync = require('./src/api/menusync')();
+const menusync = require('./src/uber/api/menusync')();
 app.use('/menu/sync', express.json(), menusync);
 
-const menuavailability = require('./src/api/menuavailability')();
+const menuavailability = require('./src/uber/api/menuavailability')();
 app.use('/menu/availability', express.json(), menuavailability);
 ```
 
@@ -90,13 +90,68 @@ router.route('/').post([
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
-    return res.status(400).json({ error: 'Required fields missing.', details: errors.array() });
+    return res.status(400).json({ error: true, code: 400, message: 'Required fields missing.', data: errors.array() });
   const { storeId } = GetReqValues(req);
-  // ...
+  try {
+    const result = await someService(storeId); // always assign to const first — never inline in data:
+    return res.status(200).json({ error: false, code: 200, message: 'Successful.', data: result });
+  } catch (err) {
+    const errmsg = err.message ? err.message : 'Operation failed.';
+    return res.status(502).json({ error: true, code: 502, message: errmsg, data: null });
+  }
 });
 ```
 
 `GetReqValues(req)` returns `req.query` if it has keys, otherwise `req.body` — so the same handler works for both GET query params and POST body.
+
+### API response envelope — all endpoints use this shape
+
+```js
+{ error: false, code: 200, message: 'Successful.', data: <payload> }  // success
+{ error: true,  code: 400, message: '...',          data: errors }     // bad input
+{ error: true,  code: 500, message: '...',          data: null }       // our fault
+{ error: true,  code: 502, message: '...',          data: null }       // upstream fault
+```
+
+**HTTP status code convention** (also documented in `server.js`):
+- `400` — caller sent bad or missing input
+- `500` — something broke on our side (bug, memory failure, bad mapping)
+- `502` — we called an upstream service (Uber API, POS endpoint) and it failed
+
+**Always assign the result to a `const` before passing to `data:`** — never inline a function call inside the response object:
+```js
+// correct
+const result = await getStore(storeId);
+return res.status(200).json({ error: false, code: 200, message: 'Successful.', data: result });
+
+// wrong — do not do this
+return res.status(200).json({ error: false, code: 200, message: 'Successful.', data: await getStore(storeId) });
+```
+
+### Dashboard HTML — consuming the envelope
+
+All `apiFetch` / `apiPost` calls in `dashboard/index.html` must follow this pattern:
+
+```js
+// apiFetch throws on non-2xx — always wrap in try/catch
+try {
+  const resp = await apiFetch('/dashboard/clients');
+  if (resp.error) { toast(resp.message, true); return; }
+  const data = resp.data; // use data here
+} catch(e) {
+  toast('Failed to load: ' + e.message, true);
+}
+
+// apiPost does NOT throw on non-2xx — check resp.error directly, still wrap for network errors
+try {
+  const r = await apiPost('/orders/accept', { orderId, storeId });
+  r.error ? toast(r.message, true) : toast('Order accepted');
+} catch(e) {
+  toast('Network error: ' + e.message, true);
+}
+```
+
+**Important:** order action endpoints (`/orders/accept`, `/orders/deny`, `/orders/status`) expect `orderId` and `storeId` in the **request body** — never in the URL path.
 
 ---
 
@@ -104,57 +159,103 @@ router.route('/').post([
 
 | File | Purpose |
 |------|---------|
-| [server.js](server.js) | Entry point (project root) — `global.Models` setup, middleware, route mounting, startup cache load. Uses `console` directly (no logger). Morgan traffic logging commented out. |
-| [src/model/index.js](src/model/index.js) | All DB setup: Sequelize instance, auto-discovers models, associations, authenticate + syncTables on startup. Exports `(force) => db`. |
-| [src/model/UberAccount.js](src/model/UberAccount.js) | OAuth token table — factory `(sequelize) => sequelize.define(...)` |
-| [src/model/UberStores.js](src/model/UberStores.js) | Restaurant store table — factory `(sequelize) => sequelize.define(...)` |
-| [src/services/uberTokenService.js](src/services/uberTokenService.js) | In-memory token cache, auto-refresh 5 min before expiry. Uses `global.Models.UberAccount`. |
-| [src/services/uberService.js](src/services/uberService.js) | Uber Eats API client — orders, menu, stores, POS activation |
-| [src/services/posRelayService.js](src/services/posRelayService.js) | Transforms Uber order → POS schema, POSTs to `pos_endpoint` |
-| [src/config/storeCache.js](src/config/storeCache.js) | In-memory store map, loaded from DB at startup. Uses `global.Models.UberStores`. |
-| [src/config/eventStore.js](src/config/eventStore.js) | Ring buffer (max 500 events) for dashboard — NOT persisted to DB |
-| [src/config/logger.js](src/config/logger.js) | Winston — console + `logs/error.log` only (combined.log disabled) |
-| [src/middleware/webhookAuth.js](src/middleware/webhookAuth.js) | HMAC-SHA256 verification of Uber webhook signature |
-| [src/utils/fetch.js](src/utils/fetch.js) | `getData`, `postData`, `patchData`, `postForm` with 30s timeout |
+| [server.js](server.js) | Entry point (project root) — `global.UberModels` setup, middleware, route mounting, startup cache load. Uses `console` directly (no logger). Morgan traffic logging commented out. |
+| [src/uber/model/index.js](src/uber/model/index.js) | All DB setup: Sequelize instance, auto-discovers models, associations, authenticate + syncTables on startup. Exports `(force) => db`. |
+| [src/uber/model/UberAccount.js](src/uber/model/UberAccount.js) | OAuth token table — factory `(sequelize) => sequelize.define(...)` |
+| [src/uber/model/UberStores.js](src/uber/model/UberStores.js) | Restaurant store table — factory `(sequelize) => sequelize.define(...)` |
+| [src/uber/model/UberErrorLog.js](src/uber/model/UberErrorLog.js) | Log table — stores all `logger.warn()` and `logger.error()` calls; fallback to `logs/ubererror.log` if DB unavailable |
+| [src/uber/model/UberEventStore.js](src/uber/model/UberEventStore.js) | Event log table — persists all `pushEvent()` calls; memory array is the read cache |
+| [src/uber/services/uberTokenService.js](src/uber/services/uberTokenService.js) | In-memory token cache, auto-refresh 5 min before expiry. Uses `global.UberModels.UberAccount`. |
+| [src/uber/services/uberService.js](src/uber/services/uberService.js) | Uber Eats API client — orders, menu, stores, POS activation |
+| [src/uber/services/posRelayService.js](src/uber/services/posRelayService.js) | Transforms Uber order → POS schema, POSTs to `pos_endpoint` |
+| [src/uber/config/storeCache.js](src/uber/config/storeCache.js) | In-memory store map, loaded from DB at startup. Uses `global.UberModels.UberStores`. |
+| [src/uber/config/eventStore.js](src/uber/config/eventStore.js) | In-memory event ring buffer (max 500) for dashboard — DB-backed via `UberEventStore`; `loadEventsFromDB()` warms memory on startup |
+| [src/uber/utils/logger.js](src/uber/utils/logger.js) | Winston — console + `logs/ubererror.log` only (combined.log disabled) |
+| [src/uber/middleware/webhookAuth.js](src/uber/middleware/webhookAuth.js) | HMAC-SHA256 verification of Uber webhook signature |
+| [src/uber/utils/fetch.js](src/uber/utils/fetch.js) | `getData`, `postData`, `patchData`, `postForm` with 30s timeout |
 
 ### API files — one action per file
 
 | File | Endpoint |
 |------|---------|
-| [src/api/webhooks.js](src/api/webhooks.js) | `POST /webhooks/uber-eats` |
-| [src/api/ordersaccept.js](src/api/ordersaccept.js) | `POST /orders/accept` |
-| [src/api/ordersdeny.js](src/api/ordersdeny.js) | `POST /orders/deny` |
-| [src/api/ordersstatus.js](src/api/ordersstatus.js) | `POST /orders/status` |
-| [src/api/menusync.js](src/api/menusync.js) | `POST /menu/sync` |
-| [src/api/menuavailability.js](src/api/menuavailability.js) | `POST /menu/availability` |
-| [src/api/dashstats.js](src/api/dashstats.js) | `GET /dashboard/stats` |
-| [src/api/dashevents.js](src/api/dashevents.js) | `GET /dashboard/events` |
-| [src/api/dashclients.js](src/api/dashclients.js) | `GET /dashboard/clients` |
-| [src/api/dashclient.js](src/api/dashclient.js) | `GET /dashboard/clients` (storeId via query param) |
-| [src/api/uberlink.js](src/api/uberlink.js) | `GET /uberlink` (OAuth callback) |
-| [src/api/uberlinkactivate.js](src/api/uberlinkactivate.js) | `POST /uberlink/activate` |
-| [dashboard/index.html](dashboard/index.html) | Static dashboard UI — "Activate POS" button calls `POST /uberlink/activate` |
+| [src/uber/api/webhooks.js](src/uber/api/webhooks.js) | `POST /uber/webhooks/uber-eats` |
+| [src/uber/api/ordersaccept.js](src/uber/api/ordersaccept.js) | `POST /uber/orders/accept` |
+| [src/uber/api/ordersdeny.js](src/uber/api/ordersdeny.js) | `POST /uber/orders/deny` |
+| [src/uber/api/ordersstatus.js](src/uber/api/ordersstatus.js) | `POST /uber/orders/status` |
+| [src/uber/api/menusync.js](src/uber/api/menusync.js) | `POST /uber/menu/sync` |
+| [src/uber/api/menuavailability.js](src/uber/api/menuavailability.js) | `POST /uber/menu/availability` |
+| [src/uber/api/dashstats.js](src/uber/api/dashstats.js) | `GET /uber/dashboard/stats` |
+| [src/uber/api/dashevents.js](src/uber/api/dashevents.js) | `GET /uber/dashboard/events` |
+| [src/uber/api/dashclients.js](src/uber/api/dashclients.js) | `GET /uber/dashboard/clients` — returns all clients |
+| [src/uber/api/dashclient.js](src/uber/api/dashclient.js) | `GET /uber/dashboard/client?storeId=` — single store lookup via Uber API (not used by dashboard UI) |
+| [src/uber/api/uberlink.js](src/uber/api/uberlink.js) | `GET /uber/uberlink` (OAuth callback) |
+| [src/uber/api/uberlinkactivate.js](src/uber/api/uberlinkactivate.js) | `POST /uber/uberlink/activate` |
+| [dashboard/index.html](dashboard/index.html) | Static dashboard UI — polls stats/events/clients every 5s, accept/deny orders, "Activate POS" button |
 
 ---
 
 ## Database models
 
-### `UberAccount` — one row per Uber Eats account
-- `client_id` (UNIQUE) — human label like `"taco-fuego"`, passed as `state` param in OAuth URL
-- `access_token`, `refresh_token`, `expires_at` (unix ms), `expires_date`
-- `scope` — currently `eats.pos_provisioning`
+### `UberAccount`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `BIGINT` PK autoincrement | Links to `UberStores.idUberAccount` |
+| `client_id` | `VARCHAR(64)` UNIQUE | Human label (e.g. `tacofuego`), passed as `state` in OAuth URL |
+| `access_token` | `TEXT` | Auto-refreshed 5 min before expiry |
+| `refresh_token` | `TEXT` | |
+| `token_type` | `VARCHAR(32)` | `Bearer` |
+| `scope` | `VARCHAR(255)` | Currently `eats.pos_provisioning` |
+| `expires_at` | `BIGINT` | Unix ms — used for in-memory expiry checks |
+| `expires_date` | `DATETIME` | Human-readable expiration datetime |
+| `lastSync` | `DATETIME` | Last OAuth link or token refresh |
+| `createdAt` / `updatedAt` | `DATETIME` | Sequelize timestamps |
 
-### `UberStores` — one row per restaurant location
-- `store_id` (UNIQUE) — Uber Eats UUID
-- `idUberAccount` (FK → UberAccount.id)
-- `pos_endpoint` — set manually after onboarding; this is where orders are forwarded
-- `pos_integration_enabled` — set to `true` after `POST /stores/{store_id}/pos_data` succeeds
+### `UberStores`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `BIGINT` PK autoincrement | |
+| `idUberAccount` | `BIGINT` FK → `UberAccount.id` | Which Uber account owns this store |
+| `store_id` | `VARCHAR(64)` UNIQUE | Uber Eats store UUID |
+| `name` | `VARCHAR(255)` | |
+| `pos_endpoint` | `VARCHAR(500)` | Set manually after onboarding — orders are forwarded here |
+| `pos_integration_enabled` | `BOOLEAN` | Set to `true` after `POST /stores/{store_id}/pos_data` succeeds |
+| `status` | `VARCHAR(32)` | `active` / `inactive` |
+| `address`, `address_2`, `city`, `state`, `postal_code`, `country` | `VARCHAR` | Flattened from Uber location object |
+| `latitude` / `longitude` | `FLOAT` | |
+| `timezone` | `VARCHAR(64)` | |
+| `avg_prep_time` | `INT` | Minutes |
+| `web_url` | `VARCHAR(500)` | |
+| `lastSync` | `DATETIME` | Last store sync from Uber API |
+| `createdAt` / `updatedAt` | `DATETIME` | Sequelize timestamps |
+
+### `UberEventStore`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `BIGINT` PK autoincrement | |
+| `type` | `VARCHAR(32)` | `ORDER_RECEIVED` · `ORDER_ACCEPTED` · `ORDER_DENIED` · `STATUS_UPDATE` · `MENU_SYNC` · `ERROR` |
+| `storeId` | `VARCHAR(64)` nullable | Uber Eats store UUID |
+| `orderId` | `VARCHAR(128)` nullable | |
+| `meta` | `TEXT` nullable | JSON string of remaining payload fields (order object, error message, status, etc.) |
+| `createdAt` | `DATETIME` | Auto timestamp — no `updatedAt` |
+
+Written by `pushEvent()` in [src/uber/config/eventStore.js](src/uber/config/eventStore.js) (fire-and-forget, non-blocking). `loadEventsFromDB()` loads the last 500 rows into memory on startup so the dashboard has history after a restart.
+
+### `UberErrorLog`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `BIGINT` PK autoincrement | |
+| `level` | `VARCHAR(20)` | Always `'error'` |
+| `message` | `TEXT` | The log message string |
+| `meta` | `TEXT` | JSON string of extra fields (storeId, orderId, error details, etc.) |
+| `createdAt` | `DATETIME` | Auto timestamp — no `updatedAt` |
+
+Written by `DBLogTransport` in [src/uber/utils/logger.js](src/uber/utils/logger.js). Falls back to `logs/ubererror.log` if DB is unavailable.
 
 ---
 
 ## Model / DB setup
 
-All DB logic is in [src/model/index.js](src/model/index.js):
+All DB logic is in [src/uber/model/index.js](src/uber/model/index.js):
 - Creates the Sequelize instance (Azure SQL, mssql dialect, port 1433, encryption on, pool max 5)
 - Auto-discovers all model files via `fs.readdirSync`, calls each factory with `sequelize`
 - Defines associations: `UberAccount.hasMany(UberStores)`
@@ -162,16 +263,23 @@ All DB logic is in [src/model/index.js](src/model/index.js):
 - `started` guard prevents re-initialization if required multiple times
 - Exits the process (`process.exit(1)`) if DB connection fails
 
-Models are accessed everywhere as `global.Models.UberAccount` / `global.Models.UberStores` — no imports needed. There is no `db.js`.
+Models are accessed everywhere as `global.UberModels.UberAccount` / `global.UberModels.UberStores` — no imports needed. There is no `db.js`.
 
 ---
 
 ## Logging
 
-`server.js` uses `console.log/warn/error` directly — no Winston there. All `src/api/`, `src/services/`, `src/middleware/` use Winston via [src/config/logger.js](src/config/logger.js):
-- **Console** — all levels (info, warn, error)
-- **`logs/error.log`** — only `logger.error(...)` calls (webhook failures, order errors, OAuth errors)
-- **`logs/combined.log`** — disabled
+`server.js` uses `console.log/warn/error` directly — no Winston there. All `src/uber/api/`, `src/uber/services/`, `src/uber/middleware/` use Winston via [src/uber/utils/logger.js](src/uber/utils/logger.js):
+- **Console** — all levels (warn, error)
+- **`UberErrorLog` DB table** — primary destination for all `logger.warn(...)` and `logger.error(...)` calls, written via `DBLogTransport` in `logger.js`
+- **`logs/ubererror.log`** — fallback only; written when DB is unavailable (not connected yet at startup, or DB write fails)
+- **`logs/combined.log`** — disabled (was for info/warn; removed)
+- `logger.info` is not used — removed project-wide; only `logger.warn` and `logger.error` are active, both recorded to DB
+
+**Log priority (DBLogTransport — captures `warn` and `error`):**
+1. If `global.UberModels.UberErrorLog` is ready → write to DB
+2. If DB write fails → write to `logs/ubererror.log`
+3. If DB model not ready yet (early startup) → write to `logs/ubererror.log`
 
 Morgan HTTP request logging is commented out in `server.js`. Uncomment to re-enable.
 
@@ -180,33 +288,51 @@ Morgan HTTP request logging is commented out in `server.js`. Uncomment to re-ena
 ## Environment variables
 
 ```env
-UBER_CLIENT_ID          # from Uber developer dashboard
-UBER_CLIENT_SECRET      # from Uber developer dashboard
-UBER_BASE_URL           # https://test-api.uber.com/v1/eats  (sandbox)
-                        # https://api.uber.com/v1/eats         (production)
-UBER_WEBHOOK_SECRET     # hex string for HMAC verification
-PORT                    # default 3000
-NODE_ENV                # development | production
-DB_SERVER               # Azure SQL hostname
-DB_USER / DB_PASS / DB_NAME
+UBER_CLIENT_ID="..."          # from Uber developer dashboard
+UBER_CLIENT_SECRET="..."      # from Uber developer dashboard
+UBER_BASE_URL="https://test-api.uber.com/v1/eats"   # sandbox
+                              # "https://api.uber.com/v1/eats" for production
+UBER_WEBHOOK_SECRET="..."     # hex string — generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+PORT=3000
+NODE_ENV="development"
+DB_SERVER="your-server.database.windows.net"
+DB_USER="..."
+DB_PASS="..."
+DB_NAME="..."
 ```
 
-**Note:** Wrap DB_PASS in quotes in `.env` — passwords with `#` or `!` break dotenv parsing.
+**Note:** Wrap all values in quotes in `.env` — passwords or secrets with `#` or `!` break dotenv parsing without quotes.
 
 ---
 
-## Dev workflow
+## Quick Start
 
 ```bash
-npm run dev     # nodemon auto-reload
-npm start       # production
+npm install
+cp .env.example .env   # fill in credentials
+npm run dev            # development with auto-reload
+npm start              # production
 ```
 
-On startup:
-1. `global.Models = require('./src/model/index')(false)` — connects to DB, creates tables if missing
-2. Tokens loaded from `UberAccount` into memory (`uberTokenService.loadTokensFromDB`)
-3. Stores loaded from `UberStores` into memory (`storeCache.loadStoresFromDB`)
-4. If tokens exist but store cache is empty → auto-fetches stores from Uber API
+On startup the server:
+1. `global.UberModels = require('./src/uber/model/index')(false)` — connects to DB, creates `UberAccount`, `UberStores`, `UberErrorLog` tables if missing
+2. Loads all tokens and stores from the DB into memory
+3. If a token exists but the store cache is empty → fetches stores from Uber API automatically
+
+**Link a Uber Eats account via OAuth** — direct the merchant to:
+```
+https://sandbox-login.uber.com/oauth/v2/authorize?client_id=<UBER_CLIENT_ID>&redirect_uri=https://kukipos-sync.azurewebsites.net/uber/uberlink&scope=eats.pos_provisioning&response_type=code&state=<client-label>
+```
+`state` is a short human label for the account (e.g. `tacofuego`, no spaces). Server handles token exchange, store sync, and POS activation at `GET /uber/uberlink`. Multiple accounts: repeat with a different `state` label per merchant.
+
+**Configure POS endpoint per store** — update the `pos_endpoint` column in the `UberStores` table directly (via Azure SQL or a future admin route). This is the URL where orders will be forwarded.
+
+**Register webhook URL with Uber** — in Uber Eats Restaurant Manager, set the webhook endpoint to:
+```
+https://kukipos-sync.azurewebsites.net/uber/webhooks/uber-eats
+```
+
+Tokens auto-refresh in memory 5 minutes before expiry and are saved back to DB. No re-authorization needed after restart.
 
 ---
 
@@ -214,8 +340,8 @@ On startup:
 
 Uber requires `POST /stores/{store_id}/pos_data` once per store using the merchant's user access token (`eats.pos_provisioning` scope) to register your integration.
 
-- **Automatic:** happens in `GET /uberlink` immediately after OAuth completes
-- **Manual re-run:** `POST /uberlink/activate` — activates all stores where `pos_integration_enabled = false`; also via the **Activate POS** button in the dashboard
+- **Automatic:** happens in `GET /uber/uberlink` immediately after OAuth completes
+- **Manual re-run:** `POST /uber/uberlink/activate` — activates all stores where `pos_integration_enabled = false`; also via the **Activate POS** button in the dashboard
 - Uses `getAccessToken(clientId)` — auto-refreshes token if needed
 - On success sets `pos_integration_enabled = true` in DB and storeCache
 
@@ -236,33 +362,111 @@ To bypass locally: `webhookAuth.js` skips verification when `UBER_WEBHOOK_SECRET
 **Link a new Uber account:**
 Direct the merchant to:
 ```
-https://sandbox-login.uber.com/oauth/v2/authorize?client_id=<ID>&redirect_uri=https://kukipos-sync.azurewebsites.net/uberlink&scope=eats.pos_provisioning&response_type=code&state=<client-label>
+https://sandbox-login.uber.com/oauth/v2/authorize?client_id=<ID>&redirect_uri=https://kukipos-sync.azurewebsites.net/uber/uberlink&scope=eats.pos_provisioning&response_type=code&state=<client-label>
 ```
 Server handles token exchange, store sync, and POS activation automatically.
 
 **Add a new API endpoint:**
-1. Create `src/api/myaction.js` exporting `() => { const router = Router(); router.route('/').METHOD(...); return router; }`
+1. Create `src/uber/api/myaction.js` exporting `() => { const router = Router(); router.route('/').METHOD(...); return router; }`
 2. In `server.js` add as a pair under the relevant group comment:
    ```js
-   const myaction = require('./src/api/myaction')();
+   const myaction = require('./src/uber/api/myaction')();
    app.use('/full/path', express.json(), myaction);
    ```
 3. Use `GetReqValues(req)` to read params — never `req.params`
-4. Use `global.Models.ModelName` for DB access — no imports needed
+4. Use `global.UberModels.ModelName` for DB access — no imports needed
+5. Always return the standard envelope: `{ error, code, message, data }` — see the API response envelope section above
 
 **Add a new Uber Eats API call:**
-1. Add a method to [src/services/uberService.js](src/services/uberService.js)
+1. Add a method to [src/uber/services/uberService.js](src/uber/services/uberService.js)
 2. Use `authHeaders()` for client_credentials token, or pass an explicit token for user-scoped calls (`eats.pos_provisioning`)
 3. Use `global.uber` as the base URL
 
 **Add a new webhook event type:**
-Extend the `switch` block in [src/api/webhooks.js](src/api/webhooks.js). Events arrive as `{ event_type, meta, data }`.
+Extend the `switch` block in [src/uber/api/webhooks.js](src/uber/api/webhooks.js). Events arrive as `{ event_type, meta, data }`.
+
+---
+
+## API Reference
+
+All routes are prefixed with `/uber/`. All responses use `{ error, code, message, data }` envelope.
+
+### Auth & Provisioning
+| Method | Path | Params | Description |
+|--------|------|--------|-------------|
+| `GET` | `/uber/uberlink` | `?code=&state=<label>` | OAuth callback — saves tokens, syncs stores, activates POS |
+| `POST` | `/uber/uberlink/activate` | body: `{}` | Re-runs POS activation for stores where `pos_integration_enabled = false` |
+
+### Webhooks
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/uber/webhooks/uber-eats` | Receives all Uber Eats events (HMAC-SHA256 signature verified) |
+
+### Orders (requires `eats.order` scope in production)
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| `POST` | `/uber/orders/accept` | `{ orderId, storeId, minutesToPrepare? }` | Accept an order |
+| `POST` | `/uber/orders/deny` | `{ orderId, storeId, reason? }` | Deny an order |
+| `POST` | `/uber/orders/status` | `{ orderId, storeId, status }` | Update order status |
+
+**Note:** `orderId` and `storeId` always go in the **request body** — never in the URL path.
+
+Valid deny reasons: `ITEM_UNAVAILABLE` · `RESTAURANT_TOO_BUSY` · `CLOSED_TEMPORARILY` · `TECHNICAL_DIFFICULTIES`
+
+Valid statuses: `ACCEPTED` · `IN_PREPARATION` · `READY_FOR_PICKUP` · `IN_DELIVERY` · `DELIVERED` · `CANCELLED`
+
+### Menu (requires `eats.store.menu.write` scope)
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| `POST` | `/uber/menu/sync` | `{ storeId, ...menu }` | Push full menu to Uber Eats |
+| `POST` | `/uber/menu/availability` | `{ storeId, items: [{item_id, available}] }` | Toggle item availability |
+
+### Dashboard
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/uber/dashboard/stats` | Aggregate stats (last 60 min) |
+| `GET` | `/uber/dashboard/events` | Event log (`?limit=100&storeId=xxx`) |
+| `GET` | `/uber/dashboard/clients` | All registered clients (store map) |
+| `GET` | `/uber/dashboard/client` | Single store lookup via Uber API (`?storeId=xxx`) — not used by dashboard UI |
+
+### Health
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Returns `{ status, uptime, version }` |
+
+---
+
+## Production Checklist
+
+- [ ] Set `NODE_ENV="production"`
+- [ ] Set `UBER_BASE_URL="https://api.uber.com/v1/eats"` (live API — currently `test-api.uber.com`)
+- [ ] Set all Azure SQL env vars (`DB_SERVER`, `DB_USER`, `DB_PASS`, `DB_NAME`)
+- [ ] Complete OAuth link at `GET /uber/uberlink?code=...&state=<label>` for each Uber account
+- [ ] Set `pos_endpoint` for each store in `UberStores` table (required before orders can be forwarded)
+- [ ] Update webhook URL in Uber Eats Restaurant Manager to `https://kukipos-sync.azurewebsites.net/uber/webhooks/uber-eats`
+- [ ] Apply for `eats.order` scope (for accept/deny/status in production)
+- [ ] Apply for `eats.store.menu.write` scope (for menu push in production)
+- [ ] Add authentication (API key or JWT) to `/uber/orders`, `/uber/menu`, `/uber/dashboard`, `/uber/uberlink/activate`
+- [ ] Verify HTTPS is active on App Service (required by Uber for webhooks)
+- [ ] Set up log rotation for `logs/` directory
+
+---
+
+## Deployment (Azure App Service)
+
+Deployed to `kukipos-sync.azurewebsites.net`. The `.deployment` file tells Azure to run `npm install` during deployment.
+
+To deploy from VS Code: use the Azure App Service extension (workspace settings in `.vscode/settings.json`).
+
+To view error logs via SSH in Azure Portal:
+```bash
+cat /home/site/wwwroot/logs/ubererror.log
+```
 
 ---
 
 ## Known limitations / TODO
 
-- `eventStore` (dashboard events) is in-memory only — lost on restart; replace with DB table for production
-- No authentication on `/orders`, `/menu`, `/dashboard`, `/uberlink/activate` — add API key or JWT before exposing publicly
+- No authentication on `/uber/orders`, `/uber/menu`, `/uber/dashboard`, `/uber/uberlink/activate` — add API key or JWT before exposing publicly
 - `eats.order` and `eats.store.menu.write` scopes needed for live order management and menu push
 - `UBER_BASE_URL` must be switched from `test-api.uber.com` to `api.uber.com` for production
