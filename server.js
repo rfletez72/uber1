@@ -124,10 +124,19 @@ module.exports = app;
 // node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 // OAuth URL:
-// https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uber/uberlink&scope=eats.pos_provisioning&response_type=code&state=tacofuego
+// here i set the key for erxample: state=tacofuego or daiquiri1
+// kuki https://sandbox-login.uber.com/oauth/v2/authorize?client_id=6KnjG3lpfuxGMRneIk_n9GHtDIxt9w9M&redirect_uri=https://kukipos-sync.azurewebsites.net/uber/uberlink&scope=eats.pos_provisioning&response_type=code&state=tacofuego
+// old rfletez https://sandbox-login.uber.com/oauth/v2/authorize?client_id=GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3&redirect_uri=https://kukipos-sync.azurewebsites.net/uber/uberlink&scope=eats.pos_provisioning&response_type=code&state=tacofuego
+
+// # ─── rfletez old keys
+// UBER_CLIENT_ID1="GoPVbSUAoIjlRmk6Ej-j__HBPjpfOgP3"
+// UBER_CLIENT_SECRET1="6r260GfUHNzAES69fnf3sVgImpMeSVnuPJDleK4c"
+
 
 // to drop tables
 // drop table UberStores
 // drop table UberAccount
 // drop table UberEventStore
 // drop table UberErrorLog
+
+// https://kukipos-sync.azurewebsites.net
